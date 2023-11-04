@@ -1,0 +1,7 @@
+#ifdef _DEBUG
+ps  RCDATA "Debug/ps.cso"
+vs  RCDATA "Debug/vs.cso"
+#else
+ps  RCDATA "Release/ps.cso"
+vs  RCDATA "Release/vs.cso"
+#endif

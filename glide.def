@@ -1,0 +1,30 @@
+LIBRARY glide3x.dll
+
+EXPORTS
+	_grSstSelect@4           = _grUnused4@4
+	_grCoordinateSpace@4     = _grUnused4@4
+	_grDitherMode@4          = _grUnused4@4
+	_grTexFilterMode@12      = _grUnused12@12
+	_grDepthMask@4           = _grUnused4@4
+	_grColorMask@8           = _grUnused8@8
+	_grVertexLayout@12       = _grUnused12@12
+	_grBufferClear@12        = _grUnused12@12
+	_grGlideInit@0           = _grUnused0@0
+	_grGlideShutdown@0       = _grUnused0@0
+	_grFinish@0              = _grUnused0@0
+	_grTexCombine@28         = _grUnused28@28
+	_guGammaCorrectionRGB@12 = _grUnused12@12
+	_grClipWindow@16         = _grUnused16@16
+	_grDepthBufferFunction@4 = _grUnused4@4
+	_grDepthBufferMode@4     = _grUnused4@4
+	_grSstWinClose@4         = _grUnused4@4
+
+	_grDepthMask@4           = _grUnused4@4
+	_grGetString@4           = _grUnused4@4
+	_grGetProcAddress@4      = _grUnused4@4
+	_grEnable@4              = _grUnused4@4
+	_grDisable@4             = _grUnused4@4
+	_grTexTextureMemRequired@8 = _grUnused8@8
+	_grTexMipMapMode@12        = _grUnused12@12
+
+	_grDrawTriangle@12  = _grUnused12@12

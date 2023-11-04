@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="d2fx.cpp" />
+    <ClCompile Include="..\PCE\pce\src\crt.cpp">
+      <Filter>pce</Filter>
+    </ClCompile>
+    <ClCompile Include="..\PCE\pce\src\crypto.cpp">
+      <Filter>pce</Filter>
+    </ClCompile>
+    <ClCompile Include="..\PCE\pce\src\freelist.cpp">
+      <Filter>pce</Filter>
+    </ClCompile>
+    <ClCompile Include="..\PCE\pce\src\lnklst.cpp">
+      <Filter>pce</Filter>
+    </ClCompile>
+    <ClCompile Include="..\PCE\pce\src\msvc.cpp">
+      <Filter>pce</Filter>
+    </ClCompile>
+    <ClCompile Include="dx.cpp" />
+    <ClCompile Include="glide.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="glide.def" />
+    <None Include="common.hlsli" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="pce">
+      <UniqueIdentifier>{c30d163a-47f1-4148-a9bf-384ba6916bb5}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="dx.h" />
+    <ClInclude Include="testdata.h" />
+    <ClInclude Include="d2fx.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="vs.hlsl" />
+    <FxCompile Include="ps.hlsl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="res.rc" />
+  </ItemGroup>
+</Project>
