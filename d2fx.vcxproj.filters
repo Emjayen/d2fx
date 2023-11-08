@@ -2,23 +2,16 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="d2fx.cpp" />
-    <ClCompile Include="..\PCE\pce\src\crt.cpp">
-      <Filter>pce</Filter>
-    </ClCompile>
-    <ClCompile Include="..\PCE\pce\src\crypto.cpp">
-      <Filter>pce</Filter>
-    </ClCompile>
-    <ClCompile Include="..\PCE\pce\src\freelist.cpp">
-      <Filter>pce</Filter>
-    </ClCompile>
-    <ClCompile Include="..\PCE\pce\src\lnklst.cpp">
-      <Filter>pce</Filter>
-    </ClCompile>
-    <ClCompile Include="..\PCE\pce\src\msvc.cpp">
-      <Filter>pce</Filter>
-    </ClCompile>
     <ClCompile Include="dx.cpp" />
     <ClCompile Include="glide.cpp" />
+    <ClCompile Include="gfx.cpp" />
+    <ClCompile Include="xxh\xxh_x86dispatch.c">
+      <Filter>xxh</Filter>
+    </ClCompile>
+    <ClCompile Include="xxh\xxhash.c">
+      <Filter>xxh</Filter>
+    </ClCompile>
+    <ClCompile Include="tcache.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="glide.def" />
@@ -28,11 +21,28 @@
     <Filter Include="pce">
       <UniqueIdentifier>{c30d163a-47f1-4148-a9bf-384ba6916bb5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="xxh">
+      <UniqueIdentifier>{c8a122c8-7cf5-49fe-9787-56162e980885}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="dx.h" />
     <ClInclude Include="testdata.h" />
     <ClInclude Include="d2fx.h" />
+    <ClInclude Include="gfx.h" />
+    <ClInclude Include="xxh\xxh_x86dispatch.h">
+      <Filter>xxh</Filter>
+    </ClInclude>
+    <ClInclude Include="xxh\xxh3.h">
+      <Filter>xxh</Filter>
+    </ClInclude>
+    <ClInclude Include="xxh\xxhash.h">
+      <Filter>xxh</Filter>
+    </ClInclude>
+    <ClInclude Include="tcache.h" />
+    <ClInclude Include="pce\pce.h">
+      <Filter>pce</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="vs.hlsl" />

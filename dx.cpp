@@ -5,13 +5,14 @@
 #include "dx.h"
 #include "d2fx.h"
 #include <d3d11.h>
-
+#include "gfx.h"
 #include "testdata.h"
 
 
 
 // D3D11_CREATE_DEVICE_DEBUG 
-#define EXTRA_DEVICE_FLAGS  0
+#define EXTRA_DEVICE_FLAGS D3D11_CREATE_DEVICE_DEBUG
+//#define EXTRA_DEVICE_FLAGS 0 
 
  // Helpers
 #define DXFAIL(_dxcall) if((hr = (_dxcall)) != S_OK) {  DebugBreak(); }
@@ -26,11 +27,16 @@ ID3D11DeviceContext* pDevCtx;
 IDXGISwapChain* pSwapChain;
 ID3D11InputLayout* pInputLayout;
 ID3D11Buffer* pVertexBuffer;
+ID3D11Buffer* pIndexBuffer;
 ID3D11Texture1D* pPalette;
 ID3D11ShaderResourceView* pPaletteSrv;
 ID3D11Buffer* pConstantBuffer;
 ID3D11RenderTargetView* pBackBufferRtv;
 ID3D11BlendState* pBlend[4];
+ID3D11Texture2D* pDepthSurface;
+ID3D11DepthStencilView* pDepthSurfaceDsv;
+ID3D11Texture2D* pTexCacheTexture;
+ID3D11ShaderResourceView* pTexCacheTextureSrv;
 
 
 // Shader types.
@@ -118,7 +124,7 @@ bool DxInitialize(void* hWindow)
     // Create our D3D device.
     D3D_FEATURE_LEVEL RequestedFeatureLevels[] =
     {
-         D3D_FEATURE_LEVEL_10_0,
+         D3D_FEATURE_LEVEL_11_0,
     };
 
     DXFAIL(pfD3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, EXTRA_DEVICE_FLAGS | D3D11_CREATE_DEVICE_SINGLETHREADED | D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS, RequestedFeatureLevels, ARRAYSIZE(RequestedFeatureLevels), D3D11_SDK_VERSION, &pDevice, NULL, &pDevCtx));
@@ -135,10 +141,10 @@ bool DxInitialize(void* hWindow)
     scd.SampleDesc.Count = 1;
     scd.SampleDesc.Quality = 0;
     scd.BufferUsage = DXGI_USAGE_BACK_BUFFER | DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    scd.BufferCount = 3;
+    scd.BufferCount = 2;
     scd.OutputWindow = (HWND) hWindow;
     scd.Windowed = TRUE;
-    scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
     scd.Flags = NULL;
 
     DXFAIL(pDxgiFactory->CreateSwapChain(pDevice, &scd, &pSwapChain));
@@ -149,7 +155,7 @@ bool DxInitialize(void* hWindow)
 
     // Create our single vertex ring buffer and describe the layout.
     D3D11_BUFFER_DESC bd;
-    bd.ByteWidth = 0x10000; /* 64K */
+    bd.ByteWidth = 0x100000; /* 64K */
     bd.Usage = D3D11_USAGE_DYNAMIC;
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -158,11 +164,22 @@ bool DxInitialize(void* hWindow)
 
     DXFAIL(pDevice->CreateBuffer(&bd, NULL, &pVertexBuffer));
 
+    // Create our index buffer.
+    bd.ByteWidth = 0x100000; /* 64K */
+    bd.Usage = D3D11_USAGE_DYNAMIC;
+    bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    bd.MiscFlags = NULL;
+    bd.StructureByteStride = 0;
+
+    DXFAIL(pDevice->CreateBuffer(&bd, NULL, &pIndexBuffer));
+
     D3D11_INPUT_ELEMENT_DESC layout[] =
     {
-        { "POSITION", 0, DXGI_FORMAT_R16G16_SINT,    0, offsetof(DxVertex, x),  D3D11_INPUT_PER_VERTEX_DATA, 0},
-        { "TEXCOORD", 0, DXGI_FORMAT_R8G8_UINT,      0, offsetof(DxVertex, u),  D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "COLOR",    0, DXGI_FORMAT_B8G8R8A8_UNORM, 0, offsetof(DxVertex, rgba), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "POSITION", 0, DXGI_FORMAT_R16G16_SINT,    0, offsetof(gfx_vert, x),  D3D11_INPUT_PER_VERTEX_DATA, 0},
+        { "DEPTH",    0, DXGI_FORMAT_R16_UNORM,      0, offsetof(gfx_vert, z),  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R8G8_UINT,      0, offsetof(gfx_vert, u),  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "COLOR",    0, DXGI_FORMAT_B8G8R8A8_UNORM, 0, offsetof(gfx_vert, rgba), D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
 
     DXFAIL(pDevice->CreateInputLayout(layout, ARRAYSIZE(layout), GetShader(SHADER_VS).pShaderData, GetShader(SHADER_VS).ShaderSz, &pInputLayout));
@@ -182,9 +199,48 @@ bool DxInitialize(void* hWindow)
     DXFAIL(pDevice->CreateTexture1D(&paldesc, NULL, &pPalette));
     DXFAIL(pDevice->CreateShaderResourceView(pPalette, NULL, &pPaletteSrv));
 
+    // Get real backbuffer dimensions.
+    DXGI_SWAP_CHAIN_DESC xx;
+    pSwapChain->GetDesc(&xx);
+
+
+    // Create depth-buffer
+    D3D11_TEXTURE2D_DESC texdesc;
+    texdesc.Width = xx.BufferDesc.Width;
+    texdesc.Height = xx.BufferDesc.Height;
+    texdesc.MipLevels = 1;
+    texdesc.ArraySize = 1;
+    texdesc.Format = DXGI_FORMAT_D16_UNORM;
+    texdesc.SampleDesc.Count = 1;
+    texdesc.SampleDesc.Quality = 0;
+    texdesc.Usage = D3D11_USAGE_DEFAULT;
+    texdesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    texdesc.CPUAccessFlags = 0;
+    texdesc.MiscFlags = 0;
+
+    DXFAIL(pDevice->CreateTexture2D(&texdesc, NULL, &pDepthSurface));
+    DXFAIL(pDevice->CreateDepthStencilView(pDepthSurface, NULL, &pDepthSurfaceDsv));
+
+
+    // Create texture cache.
+    texdesc.Width = 256;
+    texdesc.Height = 256;
+    texdesc.MipLevels = 1;
+    texdesc.ArraySize = 0x800;
+    texdesc.Format = DXGI_FORMAT_R8_UINT;
+    texdesc.Format = DXGI_FORMAT_R8_UINT;
+    texdesc.SampleDesc.Count = 1;
+    texdesc.SampleDesc.Quality = 0;
+    texdesc.Usage = D3D11_USAGE_DEFAULT;
+    texdesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    texdesc.CPUAccessFlags = NULL;
+    texdesc.MiscFlags = NULL;
+
+    DXFAIL(pDevice->CreateTexture2D(&texdesc, NULL, &pTexCacheTexture));
+    DXFAIL(pDevice->CreateShaderResourceView(pTexCacheTexture, NULL, &pTexCacheTextureSrv));
+
     {
-        DXGI_SWAP_CHAIN_DESC xx;
-        pSwapChain->GetDesc(&xx);
+        
 
         D3D11_BUFFER_DESC desc = {};
         desc.ByteWidth = 16;
@@ -221,22 +277,15 @@ bool DxInitialize(void* hWindow)
     pDevCtx->VSSetShader(GetShader(SHADER_VS).pvs, NULL, 0);
     pDevCtx->PSSetShader(GetShader(SHADER_PS).pps, NULL, 0);
 
-    UINT VertexStride = sizeof(DxVertex);
+    UINT VertexStride = sizeof(gfx_vert);
     UINT VertexOffset = 0;
 
     pDevCtx->IASetVertexBuffers(0, 1, &pVertexBuffer, &VertexStride, &VertexOffset);
+    pDevCtx->IASetIndexBuffer(pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
 
     // Bind resources
     pDevCtx->VSSetConstantBuffers(0, 1, &pConstantBuffer);
 
-    // Disable depth testing.
-    ID3D11DepthStencilState* pDS;
-    D3D11_DEPTH_STENCIL_DESC dsd = {};
-    dsd.DepthEnable = FALSE;
-
-    DXFAIL(pDevice->CreateDepthStencilState(&dsd, &pDS));
-
-    pDevCtx->OMSetDepthStencilState(pDS, 0);
 
     ID3D11Resource* pBackBuffer;
     DXFAIL(pSwapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer)));
@@ -244,16 +293,35 @@ bool DxInitialize(void* hWindow)
 
 
     {
+        //
+        // Rasterizer state.
+        //
         D3D11_RASTERIZER_DESC rd = {};
         rd.FillMode = D3D11_FILL_SOLID;
         rd.CullMode = D3D11_CULL_NONE;
-        rd.DepthClipEnable = FALSE;
+        rd.DepthClipEnable = TRUE;
         rd.ScissorEnable = FALSE;
+       
 
         ID3D11RasterizerState* pRasterState;
         DXFAIL(pDevice->CreateRasterizerState(&rd, &pRasterState));
 
         pDevCtx->RSSetState(pRasterState);
+
+
+        //
+        // Depth test state.
+        //
+        D3D11_DEPTH_STENCIL_DESC depth ={};
+        depth.DepthEnable = TRUE;
+        depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+        depth.DepthFunc = D3D11_COMPARISON_LESS;
+        depth.StencilEnable = FALSE;
+
+        ID3D11DepthStencilState* pDepthState;
+        DXFAIL(pDevice->CreateDepthStencilState(&depth, &pDepthState));
+
+        pDevCtx->OMSetDepthStencilState(pDepthState, 0);
     }
 
 
@@ -316,7 +384,7 @@ bool DxInitialize(void* hWindow)
     //u8 tex_u = width;
     //u8 tex_v = height;
 
-    //DxVertex vertices[] =
+    //gfx_vert vertices[] =
     //{
     //    { x, y, 0, 0 },
     //    { x+width, y, tex_u, 0 },
@@ -375,11 +443,15 @@ void DxCreateTexture(u32 Width, u32 Height, const void* pData, void** ppTexture,
 
     DXFAIL(pDevice->CreateTexture2D(&texdesc, &res, (ID3D11Texture2D**) ppTexture));
     DXFAIL(pDevice->CreateShaderResourceView((ID3D11Resource*)(*ppTexture), NULL, (ID3D11ShaderResourceView**)ppSrv));
+
+    LOG("Allocate Texture: 0x%X, 0x%X", *ppTexture, *ppSrv);
 }
 
 
 void DxDestroyTexture(void* pTexture, void* pSrv)
 {
+    LOG("Destroy Texture: 0x%X, 0x%X", pTexture, pSrv);
+
     if(((ID3D11ShaderResourceView*) pSrv)->Release() != 0)
     {
        // DebugBreak();
@@ -406,7 +478,7 @@ void DxStateSetPalette(void* pPaletteData)
 }
 
 
-void DumpDxVerts(DxVertex* v, u32 c)
+void DumpDxVerts(gfx_vert* v, u32 c)
 {
     LOG("DxVerts:");
     for(u32 i = 0; i < c; i++)
@@ -415,14 +487,14 @@ void DumpDxVerts(DxVertex* v, u32 c)
     }
 }
 
-void DxDraw(DxVertex* pVertices, u32 Count)
+void DxDraw(gfx_vert* pVertices, u32 Count)
 {
     D3D11_MAPPED_SUBRESOURCE map;
 
    // DumpDxVerts(pVertices, Count);
 
     DXFAIL(pDevCtx->Map(pVertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &map));
-    memcpy(map.pData, pVertices, Count * sizeof(DxVertex));
+    memcpy(map.pData, pVertices, Count * sizeof(gfx_vert));
     pDevCtx->Unmap(pVertexBuffer, 0);
 
     pDevCtx->Draw(Count, 0);
@@ -437,12 +509,57 @@ void DxBegin()
 {
     float clear[4] = { 0 };
 
-    pDevCtx->OMSetRenderTargets(1, &pBackBufferRtv, NULL);
+    pDevCtx->OMSetRenderTargets(1, &pBackBufferRtv, pDepthSurfaceDsv);
     pDevCtx->ClearRenderTargetView(pBackBufferRtv, clear);
+    pDevCtx->ClearDepthStencilView(pDepthSurfaceDsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
 }
 
 
 void DxEndAndPresent()
 {
     pSwapChain->Present(0, 0);
+}
+
+
+void DxStartVertices(void*& pVB, void*& pIB)
+{
+    D3D11_MAPPED_SUBRESOURCE map;
+
+
+    DXFAIL(pDevCtx->Map(pVertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &map));
+    pVB = map.pData;
+
+    DXFAIL(pDevCtx->Map(pIndexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &map));
+    pIB = map.pData;
+}
+
+void DxEndVertices()
+{
+    pDevCtx->Unmap(pVertexBuffer, 0);
+    pDevCtx->Unmap(pIndexBuffer, 0);
+}
+
+void DxDrawIndexed(u32 Offset, u32 Count)
+{
+    pDevCtx->DrawIndexed(Count, Offset, 0);
+}
+
+
+void DxTextureCacheUpload(u32 ArrayIdx, u16 DstX, u16 DstY, u16 TexWidth, u16 TexHeight, const void* data)
+{
+    D3D11_BOX rc;
+    rc.left = DstX;
+    rc.top = DstY;
+    rc.right = rc.left + TexWidth;
+    rc.bottom = rc.top + TexHeight;
+    rc.back = 0;
+    rc.front = 0;
+    
+    pDevCtx->UpdateSubresource(pTexCacheTexture, ArrayIdx, &rc, data, TexWidth, 0);
+}
+
+
+void DxStateSetTextureCache()
+{
+    pDevCtx->PSSetShaderResources(0, 1, &pTexCacheTextureSrv);
 }

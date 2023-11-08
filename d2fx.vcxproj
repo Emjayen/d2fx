@@ -71,11 +71,11 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>D:\Projects\d2fx\3dfx;D:\Projects\PCE;$(IncludePath)</IncludePath>
+    <IncludePath>D:\Projects\d2fx\3dfx;$(IncludePath)</IncludePath>
     <TargetName>glide3x</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>D:\Projects\d2fx\3dfx;D:\Projects\PCE;$(IncludePath)</IncludePath>
+    <IncludePath>D:\Projects\d2fx\3dfx;$(IncludePath)</IncludePath>
     <TargetName>glide3x</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -117,6 +117,11 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <IntelJCCErratum>true</IntelJCCErratum>
+      <AdditionalOptions>/D IMAGE_FILE_NAME=\"$(TargetFileName)\" /D "XXH_X86DISPATCH_ALLOW_AVX" %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -162,14 +167,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\PCE\pce\src\crt.cpp" />
-    <ClCompile Include="..\PCE\pce\src\crypto.cpp" />
-    <ClCompile Include="..\PCE\pce\src\freelist.cpp" />
-    <ClCompile Include="..\PCE\pce\src\lnklst.cpp" />
-    <ClCompile Include="..\PCE\pce\src\msvc.cpp" />
     <ClCompile Include="d2fx.cpp" />
     <ClCompile Include="dx.cpp" />
+    <ClCompile Include="gfx.cpp" />
     <ClCompile Include="glide.cpp" />
+    <ClCompile Include="tcache.cpp" />
+    <ClCompile Include="xxh\xxhash.c" />
+    <ClCompile Include="xxh\xxh_x86dispatch.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="common.hlsli" />
@@ -178,12 +182,20 @@
   <ItemGroup>
     <ClInclude Include="d2fx.h" />
     <ClInclude Include="dx.h" />
+    <ClInclude Include="gfx.h" />
+    <ClInclude Include="pce\pce.h" />
+    <ClInclude Include="tcache.h" />
     <ClInclude Include="testdata.h" />
+    <ClInclude Include="xxh\xxh3.h" />
+    <ClInclude Include="xxh\xxhash.h" />
+    <ClInclude Include="xxh\xxh_x86dispatch.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="ps.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
     </FxCompile>
     <FxCompile Include="vs.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>
@@ -191,6 +203,7 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

@@ -2,10 +2,12 @@
 #include "3dfx/glide.h"
 #include "dx.h"
 #include "d2fx.h"
+#include "gfx.h"
 #include <Windows.h>
 
 
 
+extern void tcache_init();
 // - The palette entry for the conventional transparent (color key) is index zero.
 // - The color at 0,0 is zero (indexed) for all textures.
 
@@ -60,18 +62,14 @@ tmu_tex* tmu_tex_frame_list;
 struct
 {
     tmu_tex* tex;
-    bool rgb_src_constant;
-    bool rgb_src_texture;
     u32 constant_color;
     u32 constant_write_mask;
     u32 shift;
 
+    gfx_blend blend;
+
     u32 color_palette[0x100];
 
-    struct
-    {
-
-    };
 } state;
 
 
@@ -85,13 +83,14 @@ struct
 void GetTexDim(const GrTexInfo* info, FxU32* w, FxU32* h);
 tmu_tex* tmu_lookup(u32 addr);
 void tmu_insert(u32 addr, GrTexInfo* info);
+void tmu_clean_frame_list();
 
 
 /*
 
 */
 
-void vtv(DxVertex& out, vert& in)
+void vtv(gfx_vert& out, vert& in)
 {
     u16 u = in.u;
     u16 v = in.v;
@@ -108,15 +107,6 @@ void vtv(DxVertex& out, vert& in)
 }
 
 
-void DrawSubmit(DxVertex* verts, u32 count)
-{
-    if(state.rgb_src_constant)
-    {
-        
-    }
-
-    DxDraw(verts, count);
-}
 
 
 //
@@ -167,8 +157,10 @@ FX_ENTRY void FX_CALL grBufferSwap(FxU32 swap_interval)
 {
     LOG("Present");
 
+    gfx_flush();
     DxEndAndPresent();
     DxBegin();
+    tmu_clean_frame_list();
 }
 
 
@@ -179,55 +171,34 @@ FX_ENTRY void FX_CALL grDrawVertexArray
     void* pointers
 )
 {
-    const auto tris = (Count - 2);
-    DxVertex* vert_buf = (DxVertex*) alloca(tris * 3 * sizeof(DxVertex));
-    DxVertex* dst_verts = vert_buf;
-    vert** src_verts = (vert**) pointers;
+    gfx_vert* dst = gfx_vb_write_begin();
+    vert** src = (vert**) pointers;
 
-    //LOG("DrawVertexArray: mode:%u", mode);
-
-    //for(int i = 0; i < Count; i++)
-    //{
-    //    LOG("%f,%f (%f,%f)", src_verts[i]->x, src_verts[i]->y, src_verts[i]->u, src_verts[i]->v);
-    //}
+    for(u8 i = 0; i < Count; i++)
+    {
+        vtv(dst[i], *src[i]);
+    }
 
     switch(mode)
     {
         case GR_TRIANGLE_FAN:
         {
-            for(int i = 2; i < Count; i++)
+            for(u8 i = 2; i < Count; i++)
             {
-                vtv(*dst_verts++, *src_verts[0]);
-                vtv(*dst_verts++, *src_verts[i-1]);
-                vtv(*dst_verts++, *src_verts[i]);
+                gfx_draw_tri(state.tex->pTextureSRV, state.blend, 0, i-1, i);
             }
         } break;
 
         case GR_TRIANGLE_STRIP:
         {
-            for(int i = 0; i < Count - 2; i++)
+            for(u8 i = 0; i < Count - 2; i++)
             {
-                if(i % 2)
-                {
-                    vtv(*dst_verts++, *src_verts[i+1]);
-                    vtv(*dst_verts++, *src_verts[i]);
-                    vtv(*dst_verts++, *src_verts[i+2]);
-                }
-
-                else
-                {
-                    vtv(*dst_verts++, *src_verts[i]);
-                    vtv(*dst_verts++, *src_verts[i+1]);
-                    vtv(*dst_verts++, *src_verts[i+2]);
-                }
+                gfx_draw_tri(state.tex->pTextureSRV, state.blend, i, i+1, i+2);
             }
         } break;
-
-        default:
-            DebugBreak();
     }
 
-    DrawSubmit(vert_buf, tris * 3);
+    gfx_vb_write_end(Count);
 }
 
 
@@ -239,57 +210,34 @@ FX_ENTRY void FX_CALL grDrawVertexArrayContiguous
     FxU32 stride
 )
 {
-    const auto tris = (Count - 2);
-    DxVertex* vert_buf = (DxVertex*) alloca(tris * 3 * sizeof(DxVertex));
-    DxVertex* dst_verts = vert_buf;
-    vert* src_verts = (vert*) pointers;
+    gfx_vert* dst = gfx_vb_write_begin();
+    vert* src = (vert*) pointers;
 
-
-    //LOG("DrawVertexArrayContiguous: mode:%u", mode);
-
-    //for(int i = 0; i < Count; i++)
-    //{
-    //    LOG("%f,%f (%f,%f)", src_verts[i].x, src_verts[i].y, src_verts[i].u, src_verts[i].v);
-    //}
-
+    for(u8 i = 0; i < Count; i++)
+    {
+        vtv(dst[i], src[i]);
+    }
 
     switch(mode)
     {
-    case GR_TRIANGLE_FAN:
-    {
-        for(int i = 2; i < Count; i++)
+        case GR_TRIANGLE_FAN:
         {
-            vtv(*dst_verts++, src_verts[0]);
-            vtv(*dst_verts++, src_verts[i-1]);
-            vtv(*dst_verts++, src_verts[i]);
-        }
-    } break;
+            for(u8 i = 2; i < Count; i++)
+            {
+                gfx_draw_tri(state.tex->pTextureSRV, state.blend, 0, i-1, i);
+            }
+        } break;
 
-    case GR_TRIANGLE_STRIP:
-    {
-        for(int i = 0; i < Count - 2; i++)
+        case GR_TRIANGLE_STRIP:
         {
-            if(i % 2)
+            for(u8 i = 0; i < Count - 2; i++)
             {
-                vtv(*dst_verts++, src_verts[i+1]);
-                vtv(*dst_verts++, src_verts[i]);
-                vtv(*dst_verts++, src_verts[i+2]);
+                gfx_draw_tri(state.tex->pTextureSRV, state.blend, i, i+1, i+2);
             }
-
-            else
-            {
-                vtv(*dst_verts++, src_verts[i]);
-                vtv(*dst_verts++, src_verts[i+1]);
-                vtv(*dst_verts++, src_verts[i+2]);
-            }
-        }
-    } break;
-
-    default:
-        DebugBreak();
+        } break;
     }
 
-    DrawSubmit(vert_buf, tris * 3);
+    gfx_vb_write_end(Count);
 }
 
 
@@ -317,8 +265,12 @@ FX_ENTRY void FX_CALL grTexSource
 {
     tmu_tex* tex = tmu_lookup(startAddress);
 
-    tex->next = tmu_tex_frame_list;
-    tmu_tex_frame_list = tex;
+    if(!tex->in_frame_list)
+    {
+        tex->next = tmu_tex_frame_list;
+        tmu_tex_frame_list = tex;
+        tex->in_frame_list = true;
+    }
 
     state.tex = tex;
 
@@ -341,22 +293,19 @@ FX_ENTRY void FX_CALL grColorCombine
 {
     state.constant_write_mask &= 0xFF000000;
 
-    switch (PFX_COLOR_STATE(function, factor, local, other))
+    switch(PFX_COLOR_STATE(function, factor, local, other))
     {
-    case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_SCALE_OTHER, GR_COMBINE_FACTOR_LOCAL, GR_COMBINE_LOCAL_ITERATED, GR_COMBINE_OTHER_TEXTURE):
-    {
-        state.rgb_src_texture = true;
-    } break;
+        case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_SCALE_OTHER, GR_COMBINE_FACTOR_LOCAL, GR_COMBINE_LOCAL_ITERATED, GR_COMBINE_OTHER_TEXTURE):
+        {
+        } break;
 
-    case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_LOCAL, GR_COMBINE_FACTOR_ZERO, GR_COMBINE_LOCAL_CONSTANT, GR_COMBINE_OTHER_CONSTANT):
-    {
-        state.rgb_src_constant = true;
+        case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_LOCAL, GR_COMBINE_FACTOR_ZERO, GR_COMBINE_LOCAL_CONSTANT, GR_COMBINE_OTHER_CONSTANT):
+        {
+            state.constant_write_mask |= 0x00FFFFFF;
+        } break;
 
-        state.constant_write_mask |= 0x00FFFFFF;
-    } break;
-
-    default:
-        DebugBreak();
+        default:
+            DebugBreak();
     }
 }
 
@@ -370,7 +319,7 @@ FX_ENTRY void FX_CALL grAlphaCombine
     FxBool invert
 )
 {
-    switch (PFX_COLOR_STATE(function, factor, local, other))
+    switch(PFX_COLOR_STATE(function, factor, local, other))
     {
     case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_LOCAL, GR_COMBINE_FACTOR_ZERO, GR_COMBINE_LOCAL_CONSTANT, GR_COMBINE_OTHER_CONSTANT):
     case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_ZERO, GR_COMBINE_FACTOR_ZERO, GR_COMBINE_LOCAL_CONSTANT, GR_COMBINE_OTHER_CONSTANT):
@@ -393,33 +342,27 @@ FX_ENTRY void FX_CALL grAlphaBlendFunction
 {
     state.constant_write_mask &= 0x00FFFFFF;
 
-    switch (PFX_BLEND_STATE(rgb_sf, rgb_df, alpha_sf, alpha_df))
+    switch(PFX_BLEND_STATE(rgb_sf, rgb_df, alpha_sf, alpha_df))
     {
         case PFX_BLEND_STATE(GR_BLEND_ONE, GR_BLEND_ZERO, GR_BLEND_ZERO, GR_BLEND_ZERO):
         {
-            LOG("Set blend: OPAQUE");
-            DxSetBlend(DX_BLEND_OPAQUE);
+            state.blend = GFX_BLEND_OPAQUE;
         } break;
 
         case PFX_BLEND_STATE(GR_BLEND_ONE, GR_BLEND_ONE, GR_BLEND_ZERO, GR_BLEND_ZERO):
         {
-            LOG("Set blend: ADDITIVE");
-            DxSetBlend(DX_BLEND_ADDITIVE);
+            state.blend = GFX_BLEND_ADDITIVE;
         } break;
 
         case PFX_BLEND_STATE(GR_BLEND_ZERO, GR_BLEND_SRC_COLOR, GR_BLEND_ZERO, GR_BLEND_ZERO):
         {
-            LOG("Set blend: MODULATE");
-            DxSetBlend(DX_BLEND_MODULATE);
+            state.blend = GFX_BLEND_MODULATE;
         } break;
 
         case PFX_BLEND_STATE(GR_BLEND_SRC_ALPHA, GR_BLEND_ONE_MINUS_SRC_ALPHA, GR_BLEND_ZERO, GR_BLEND_ZERO):
         {
+            state.blend = GFX_BLEND_ALPHA;
             state.constant_write_mask = 0xFF000000;
-            
-            DxSetBlend(DX_BLEND_ALPHA);
-
-            LOG("Set blend: SRC_ALPHA");
             break;
         }
 
@@ -612,6 +555,20 @@ void tmu_free_tex(tmu_tex* tex)
 }
 
 
+void tmu_clean_frame_list()
+{
+    for(tmu_tex* tex = tmu_tex_frame_list, *next; tex; tex = next)
+    {
+        next = tex->next;
+        tex->in_frame_list = false;
+
+        if(tex->pending_delete)
+            tmu_free_tex(tex);
+    }
+
+    tmu_tex_frame_list = NULL;
+}
+
 void tmu_insert(u32 addr, GrTexInfo* info)
 {
     tmu_vad* new_vad = NULL;
@@ -626,7 +583,7 @@ void tmu_insert(u32 addr, GrTexInfo* info)
         {
             if (addr >= vad.addr && addr < vad.addr + tex.size)
             {
-                LOG("TMU free VAD: 0x%X", vad.addr);
+                LOG("TMU delete VAD: 0x%X (SRV: 0x%X)", &vad, tex.pTextureSRV);
                 tmu_free_tex(&tex);
                 vad.used = false;
                 new_vad = &vad;
@@ -647,12 +604,14 @@ void tmu_insert(u32 addr, GrTexInfo* info)
     new_vad->tex = new_tex - tmu_tex_list;
     new_vad->used = true;
 
-    memzero(new_tex, sizeof(new_tex));
+    memzero(new_tex, sizeof(*new_tex));
     new_tex->info = *info;
-    GetTexDim(&new_tex->info, &new_tex->width, &new_tex->height);
+    GetTexDim(&new_tex->info, (FxU32*) &new_tex->width, (FxU32*) &new_tex->height);
     new_tex->size = new_tex->width * new_tex->height;
 
     DxCreateTexture(new_tex->width, new_tex->height, new_tex->info.data, &new_tex->pTexture, &new_tex->pTextureSRV);
+
+    LOG("TMU new VAD: 0x%X (Texture SRV: 0x%X", new_vad, new_tex->pTextureSRV);
 }
 
 

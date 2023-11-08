@@ -3,7 +3,8 @@
 
 #include <stdio.h>
 
-LRESULT STDCALL OnWindowMsg(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+
+LRESULT WINAPI OnWindowMsg(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 {
     switch (Msg)
     {

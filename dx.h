@@ -3,18 +3,10 @@
  *
  */
 #pragma once
-#include <pce/pce.h>
+#include "pce/pce.h"
+#include <d3d11.h>
 
 
-struct DxVertex
-{
-	s16 x;
-	s16 y;
-	u8 u;
-	u8 v;
-	u8 ck;
-	u32 rgba;
-};
 
 
 bool DxInitialize(void* hWindow);
@@ -24,9 +16,15 @@ void DxDestroyTexture(void* pTexture, void* pSrv);
 void DxStateSetTexture(void* pTextureSrv);
 void DxStateSetTexture(void* pTextureSrv);
 void DxStateSetPalette(void* pPaletteData);
-void DxDraw(DxVertex* pVertices, u32 Count);
 void DxBegin();
 void DxEndAndPresent();
+
+void DxStartVertices(void*& pVB, void*& pIB);
+void DxEndVertices();
+void DxDrawIndexed(u32 Offset, u32 Count);
+
+void DxTextureCacheUpload(u32 ArrayIdx, u16 DstX, u16 DstY, u16 TexWidth, u16 TexHeight, const void* data);
+void DxStateSetTextureCache();
 
 
 #define DX_BLEND_OPAQUE    0
