@@ -5,6 +5,7 @@
 #pragma once
 #include "pce\pce.h"
 #include "dx.h"
+#include "tcache.h"
 
 
 
@@ -14,6 +15,7 @@ enum gfx_blend
 	GFX_BLEND_ADDITIVE  = 1,
 	GFX_BLEND_MODULATE  = 2,
 	GFX_BLEND_ALPHA     = 3,
+	GFX_BLEND_UNDEFINED = 4,
 };
 
 
@@ -38,20 +40,17 @@ union gfx_vert
 };
 
 
-struct gfx_cmd
+union cmd_pso
 {
-	u16 voff;
-	u8 blend;
-	void* tex_srv;
-
-
 	struct
 	{
-		u16 v0 : 4,
-			v1 : 4,
-			v2 : 4;
-	} tri;
+		u32 ta_x : 8,
+			ta_y : 8,
+			ta_t : 11,
+			blend : 2;
+	};
 };
+
 
 
 
@@ -59,6 +58,7 @@ struct gfx_cmd
 gfx_vert* gfx_vb_write_begin();
 void gfx_vb_write_end(u32 count);
 
-void gfx_draw_tri(void* tex_srv, gfx_blend blend, u8 v0, u8 v1, u8 v2);
+void gfx_draw_tri(gfx_tex* tex, gfx_blend blend, u8 v0, u8 v1, u8 v2);
 
 void gfx_flush();
+u32 gfx_frame_seq_num();

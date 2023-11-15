@@ -7,12 +7,17 @@
 #include <d3d11.h>
 #include "gfx.h"
 #include "testdata.h"
+#include "tcache.h"
 
 
 
-// D3D11_CREATE_DEVICE_DEBUG 
+
+#ifdef _DEBUG
 #define EXTRA_DEVICE_FLAGS D3D11_CREATE_DEVICE_DEBUG
-//#define EXTRA_DEVICE_FLAGS 0 
+#else
+#define EXTRA_DEVICE_FLAGS 0 
+#endif
+
 
  // Helpers
 #define DXFAIL(_dxcall) if((hr = (_dxcall)) != S_OK) {  DebugBreak(); }
@@ -180,6 +185,7 @@ bool DxInitialize(void* hWindow)
         { "DEPTH",    0, DXGI_FORMAT_R16_UNORM,      0, offsetof(gfx_vert, z),  D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 0, DXGI_FORMAT_R8G8_UINT,      0, offsetof(gfx_vert, u),  D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "COLOR",    0, DXGI_FORMAT_B8G8R8A8_UNORM, 0, offsetof(gfx_vert, rgba), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TILEID",   0, DXGI_FORMAT_R16_UINT,       0, offsetof(gfx_vert, tid), D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
 
     DXFAIL(pDevice->CreateInputLayout(layout, ARRAYSIZE(layout), GetShader(SHADER_VS).pShaderData, GetShader(SHADER_VS).ShaderSz, &pInputLayout));
@@ -226,7 +232,7 @@ bool DxInitialize(void* hWindow)
     texdesc.Width = 256;
     texdesc.Height = 256;
     texdesc.MipLevels = 1;
-    texdesc.ArraySize = 0x800;
+    texdesc.ArraySize = MAX_TILES;
     texdesc.Format = DXGI_FORMAT_R8_UINT;
     texdesc.Format = DXGI_FORMAT_R8_UINT;
     texdesc.SampleDesc.Count = 1;
@@ -315,7 +321,7 @@ bool DxInitialize(void* hWindow)
         D3D11_DEPTH_STENCIL_DESC depth ={};
         depth.DepthEnable = TRUE;
         depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-        depth.DepthFunc = D3D11_COMPARISON_LESS;
+        depth.DepthFunc = D3D11_COMPARISON_GREATER;
         depth.StencilEnable = FALSE;
 
         ID3D11DepthStencilState* pDepthState;
@@ -403,21 +409,24 @@ bool DxInitialize(void* hWindow)
     //DxStateSetPalette(rawData_pal);
 
 
-  
-
-    //for(;;)
-    //{
-    //    DxBegin();
-    //    DxStateSetTexture(pTestTexSrv);
-    //    DxDraw(vertices, 6);
-    //    DxEndAndPresent();
-    //}
-
-
-   
-
     return true;
 }
+
+
+void DxTextureCacheUpload(u32 ArrayIdx, u16 DstX, u16 DstY, u16 TexWidth, u16 TexHeight, const void* data)
+{
+    D3D11_BOX rc;
+    rc.left = DstX;
+    rc.top = DstY;
+    rc.right = rc.left + TexWidth;
+    rc.bottom = rc.top + TexHeight;
+    rc.back = 1;
+    rc.front = 0;
+
+    pDevCtx->UpdateSubresource(pTexCacheTexture, ArrayIdx, &rc, data, TexWidth, 0);
+}
+
+
 
 
 
@@ -511,7 +520,7 @@ void DxBegin()
 
     pDevCtx->OMSetRenderTargets(1, &pBackBufferRtv, pDepthSurfaceDsv);
     pDevCtx->ClearRenderTargetView(pBackBufferRtv, clear);
-    pDevCtx->ClearDepthStencilView(pDepthSurfaceDsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
+    pDevCtx->ClearDepthStencilView(pDepthSurfaceDsv, D3D11_CLEAR_DEPTH, 0, 0);
 }
 
 
@@ -545,21 +554,14 @@ void DxDrawIndexed(u32 Offset, u32 Count)
 }
 
 
-void DxTextureCacheUpload(u32 ArrayIdx, u16 DstX, u16 DstY, u16 TexWidth, u16 TexHeight, const void* data)
-{
-    D3D11_BOX rc;
-    rc.left = DstX;
-    rc.top = DstY;
-    rc.right = rc.left + TexWidth;
-    rc.bottom = rc.top + TexHeight;
-    rc.back = 0;
-    rc.front = 0;
-    
-    pDevCtx->UpdateSubresource(pTexCacheTexture, ArrayIdx, &rc, data, TexWidth, 0);
-}
-
 
 void DxStateSetTextureCache()
 {
     pDevCtx->PSSetShaderResources(0, 1, &pTexCacheTextureSrv);
+}
+
+
+void* DxGetTextureCacheSrv()
+{
+    return pTexCacheTextureSrv;
 }

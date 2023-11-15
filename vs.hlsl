@@ -18,4 +18,5 @@ void main
     ps_in.pos = float4(ndc_x, ndc_y, vs_in.z, 1);
     ps_in.uv = vs_in.uv;
     ps_in.color = vs_in.color;
+    ps_in.tid = vs_in.tid;
 }

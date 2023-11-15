@@ -24,7 +24,7 @@ void DxEndVertices();
 void DxDrawIndexed(u32 Offset, u32 Count);
 
 void DxTextureCacheUpload(u32 ArrayIdx, u16 DstX, u16 DstY, u16 TexWidth, u16 TexHeight, const void* data);
-void DxStateSetTextureCache();
+void* DxGetTextureCacheSrv();
 
 
 #define DX_BLEND_OPAQUE    0

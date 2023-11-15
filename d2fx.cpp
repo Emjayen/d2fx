@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 
+#include "helper.h"
+
 
 LRESULT WINAPI OnWindowMsg(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 {
@@ -16,46 +18,43 @@ LRESULT WINAPI OnWindowMsg(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 }
 
 
-void main()
+
+HANDLE hLog;
+u64 QpcHz;
+
+
+
+u64 HPC()
 {
-    HWND hwnd;
-
-
-
-    float height = 600;
-
-    float y = 600;
-
-    float r = -((y / height) * 2 - 1);
-
-
-
-    SetProcessDPIAware();
-
-    WNDCLASSEX wcx = {};
-    wcx.cbSize = sizeof(wcx);
-    wcx.hInstance = GetModuleHandle(NULL);
-    wcx.lpszClassName = "d2fx";
-    wcx.lpfnWndProc = &OnWindowMsg;
-
-    RegisterClassEx(&wcx);
-
-    if (!(hwnd = CreateWindowEx(WS_EX_APPWINDOW, wcx.lpszClassName, "d2fx", WS_VISIBLE | WS_OVERLAPPED, 0, 0, 800, 600, NULL, NULL, wcx.hInstance, NULL)))
-        return;
-
-    DxInitialize(hwnd);
-
-    MSG msg;
-
-    for (;;)
-    {
-        GetMessage(&msg, NULL, 0, 0);
-        DispatchMessage(&msg);
-    }
+    u64 t;
+    QueryPerformanceCounter((LARGE_INTEGER*) &t);
+    return t;
 }
 
 
-HANDLE hLog;
+DWORD WINAPI PE_GetTickCount()
+{
+    u64 t = HPC();
+    t *= 1000;
+    t /= QpcHz;
+
+    return t;
+}
+
+
+
+LRESULT WINAPI PE_PeekMessageA
+(
+    MSG* pMsg,
+    HWND hwnd,
+    UINT FilterMin,
+    UINT FilterMax,
+    UINT RemoveMsg
+)
+{
+    return 0;
+}
+
 
 BOOL WINAPI DllMain(
     HINSTANCE hinstDLL,  // handle to DLL module
@@ -65,6 +64,11 @@ BOOL WINAPI DllMain(
     if(fdwReason == DLL_PROCESS_ATTACH)
     {
         hLog = CreateFile("d2fx.log", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, 0, 0);
+
+
+        QueryPerformanceFrequency((LARGE_INTEGER*) &QpcHz);
+
+        ASSERT(PsWriteImport(GetModuleHandle(NULL), NULL, "GetTickCount", (uiptr) &PE_GetTickCount) != 0);
     }
 
     return TRUE;
@@ -82,5 +86,5 @@ void Log(const char* pFormat, ...)
 
     DWORD Result;
     WriteFile(hLog, tmp, len, &Result, NULL);
-    OutputDebugString(tmp);
+    //OutputDebugString(tmp);
 }

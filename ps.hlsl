@@ -5,7 +5,7 @@
 #include "common.hlsli"
 
 
-Texture2D<uint> tex : register(t0);
+Texture2DArray<uint> tex : register(t0);
 Texture1D pal : register(t1);
 
 
@@ -17,7 +17,7 @@ float4 main
 ) : SV_Target
 {
 
-    const uint idx = tex.Load(int3(ps_in.uv, 0));
+    const uint idx = tex.Load(int4(ps_in.uv, int2(ps_in.tid, 0)));
     
     // Color key
     if(idx == 0)

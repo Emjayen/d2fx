@@ -14,9 +14,8 @@ extern void tcache_init();
 
 
 // Configuration
-#define TMU_MEM_SZ     (16 * 1024 * 1024)
-#define TMU_ALIGNMENT  0x100
-#define TMU_MAX_VADS  0x8000
+#define TMU_BANK_SZ   (4 * 1024 * 1024)
+#define TMU_TEX_ALIGN 0x40
 
 
 struct vert
@@ -31,37 +30,21 @@ struct vert
     u32 reserved;
 };
 
-struct tmu_tex
-{
-    tmu_tex* next;
-    u32 size; /* Size in bytes */
-    u32 width;
-    u32 height;
-    GrTexInfo info;
-    void* pTexture;
-    void* pTextureSRV;
-    bool pending_delete;
-    bool in_frame_list;
-};
-
 
 struct tmu_vad
 {
-    u32 addr;
-    u32 tex : 31,
-        used : 1;
+    gfx_tex* tex;
 };
 
-tmu_tex tmu_tex_list[TMU_MEM_SZ];
-tmu_vad tmu_vad_list[TMU_MAX_VADS];
-tmu_tex* tmu_tex_next_free;
-tmu_tex* tmu_tex_frame_list;
 
-
-
+// 3dfx device state.
 struct
 {
-    tmu_tex* tex;
+    tmu_vad vads[TMU_BANK_SZ / TMU_TEX_ALIGN];
+
+
+    // tmu_tex* tex;
+    gfx_tex* tex;
     u32 constant_color;
     u32 constant_write_mask;
     u32 shift;
@@ -70,7 +53,7 @@ struct
 
     u32 color_palette[0x100];
 
-} state;
+} fxs;
 
 
 
@@ -81,14 +64,8 @@ struct
 
 // Prototypes
 void GetTexDim(const GrTexInfo* info, FxU32* w, FxU32* h);
-tmu_tex* tmu_lookup(u32 addr);
-void tmu_insert(u32 addr, GrTexInfo* info);
-void tmu_clean_frame_list();
 
 
-/*
-
-*/
 
 void vtv(gfx_vert& out, vert& in)
 {
@@ -100,10 +77,10 @@ void vtv(gfx_vert& out, vert& in)
 
     out.x = (s16) in.x;
     out.y = (s16) in.y;
-    out.u = u >> state.shift;
-    out.v = v >> state.shift;
+    out.u = u >> fxs.shift;
+    out.v = v >> fxs.shift;
 
-    out.rgba = (in.c & 0x00FFFFFF) | (state.constant_color & state.constant_write_mask);
+    out.rgba = (in.c & 0x00FFFFFF) | (fxs.constant_color & fxs.constant_write_mask);
 }
 
 
@@ -131,16 +108,11 @@ FX_ENTRY GrContext_t FX_CALL grSstWinOpen
         return (GrContext_t) 1;
     }
 
+    tcache_init();
+
     Done = true;
 
     SetProcessDPIAware();
-
-    for(int i = 0; i < ARRAYSIZE(tmu_tex_list); i++)
-    {
-        tmu_tex_list[i].next = tmu_tex_next_free;
-        tmu_tex_next_free = &tmu_tex_list[i];
-    }
-
 
     if(!DxInitialize((void*) hWnd))
         DebugBreak();
@@ -155,12 +127,9 @@ FX_ENTRY GrContext_t FX_CALL grSstWinOpen
 //
 FX_ENTRY void FX_CALL grBufferSwap(FxU32 swap_interval)
 {
-    LOG("Present");
-
     gfx_flush();
     DxEndAndPresent();
     DxBegin();
-    tmu_clean_frame_list();
 }
 
 
@@ -185,7 +154,7 @@ FX_ENTRY void FX_CALL grDrawVertexArray
         {
             for(u8 i = 2; i < Count; i++)
             {
-                gfx_draw_tri(state.tex->pTextureSRV, state.blend, 0, i-1, i);
+                gfx_draw_tri(fxs.tex, fxs.blend, 0, i-1, i);
             }
         } break;
 
@@ -193,7 +162,7 @@ FX_ENTRY void FX_CALL grDrawVertexArray
         {
             for(u8 i = 0; i < Count - 2; i++)
             {
-                gfx_draw_tri(state.tex->pTextureSRV, state.blend, i, i+1, i+2);
+                gfx_draw_tri(fxs.tex, fxs.blend, i, i+1, i+2);
             }
         } break;
     }
@@ -224,7 +193,7 @@ FX_ENTRY void FX_CALL grDrawVertexArrayContiguous
         {
             for(u8 i = 2; i < Count; i++)
             {
-                gfx_draw_tri(state.tex->pTextureSRV, state.blend, 0, i-1, i);
+                gfx_draw_tri(fxs.tex, fxs.blend, 0, i-1, i);
             }
         } break;
 
@@ -232,7 +201,7 @@ FX_ENTRY void FX_CALL grDrawVertexArrayContiguous
         {
             for(u8 i = 0; i < Count - 2; i++)
             {
-                gfx_draw_tri(state.tex->pTextureSRV, state.blend, i, i+1, i+2);
+                gfx_draw_tri(fxs.tex, fxs.blend, i, i+1, i+2);
             }
         } break;
     }
@@ -263,23 +232,66 @@ FX_ENTRY void FX_CALL grTexSource
     GrTexInfo* info
 )
 {
-    tmu_tex* tex = tmu_lookup(startAddress);
+    FxU32 width;
+    FxU32 height;
+   
+    GetTexDim(info, &width, &height);
+    u32 size = width*height;
 
-    if(!tex->in_frame_list)
-    {
-        tex->next = tmu_tex_frame_list;
-        tmu_tex_frame_list = tex;
-        tex->in_frame_list = true;
-    }
 
-    state.tex = tex;
+    ASSERT((startAddress+size <= TMU_BANK_SZ - TMU_TEX_ALIGN) && (startAddress & TMU_TEX_ALIGN-1) == 0);
 
     DWORD Idx;
-    _BitScanReverse(&Idx, max(tex->width, tex->height));
-    state.shift = 8 - Idx;
+    _BitScanReverse(&Idx, max(width, height));
+    fxs.shift = 8 - Idx;
 
-    DxStateSetTexture(state.tex->pTextureSRV);
+    // Set texture as current state. Note that the texture will still not be resident in vidmem
+    // until it's actually referenced in work submission.
+    fxs.tex = fxs.vads[startAddress/TMU_TEX_ALIGN].tex;
+
+    ASSERT(fxs.tex != nullptr);
 }
+
+
+FX_ENTRY void FX_CALL grTexDownloadMipMap
+(
+    GrChipID_t tmu,
+    FxU32 startAddress,
+    FxU32 evenOdd,
+    GrTexInfo* info
+)
+{
+    // Compute linear size of texture memory.
+    FxU32 width;
+    FxU32 height;
+    GetTexDim(info, &width, &height);
+    const auto size = width * height;
+
+    ASSERT((startAddress+size <= TMU_BANK_SZ - TMU_TEX_ALIGN) && (startAddress & TMU_TEX_ALIGN-1) == 0 && size >= TMU_TEX_ALIGN && (size & TMU_TEX_ALIGN-1) == 0);
+
+
+    // Implicitly releases any overwritten surfaces.
+    for(u32 i = 0; i < size/TMU_TEX_ALIGN; i++)
+    {
+        tmu_vad& vad = fxs.vads[(startAddress/TMU_TEX_ALIGN) + i];
+
+        if(vad.tex)
+        {
+            if(fxs.tex == vad.tex)
+                fxs.tex = nullptr;
+
+            tex_tmu_release(vad.tex);
+            vad.tex = nullptr;
+        }
+    }
+
+    // Fetch VAD for this address.
+    auto& vad = fxs.vads[startAddress/TMU_TEX_ALIGN];
+
+    vad.tex = tex_create(info->data, width, height);
+}
+
+
 
 
 FX_ENTRY void FX_CALL grColorCombine
@@ -291,7 +303,7 @@ FX_ENTRY void FX_CALL grColorCombine
     FxBool invert
 )
 {
-    state.constant_write_mask &= 0xFF000000;
+    fxs.constant_write_mask &= 0xFF000000;
 
     switch(PFX_COLOR_STATE(function, factor, local, other))
     {
@@ -301,11 +313,11 @@ FX_ENTRY void FX_CALL grColorCombine
 
         case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_LOCAL, GR_COMBINE_FACTOR_ZERO, GR_COMBINE_LOCAL_CONSTANT, GR_COMBINE_OTHER_CONSTANT):
         {
-            state.constant_write_mask |= 0x00FFFFFF;
+            fxs.constant_write_mask |= 0x00FFFFFF;
         } break;
 
         default:
-            DebugBreak();
+            ASSERT(false);
     }
 }
 
@@ -321,13 +333,13 @@ FX_ENTRY void FX_CALL grAlphaCombine
 {
     switch(PFX_COLOR_STATE(function, factor, local, other))
     {
-    case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_LOCAL, GR_COMBINE_FACTOR_ZERO, GR_COMBINE_LOCAL_CONSTANT, GR_COMBINE_OTHER_CONSTANT):
-    case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_ZERO, GR_COMBINE_FACTOR_ZERO, GR_COMBINE_LOCAL_CONSTANT, GR_COMBINE_OTHER_CONSTANT):
+        case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_LOCAL, GR_COMBINE_FACTOR_ZERO, GR_COMBINE_LOCAL_CONSTANT, GR_COMBINE_OTHER_CONSTANT):
+        case PFX_COLOR_STATE(GR_COMBINE_FUNCTION_ZERO, GR_COMBINE_FACTOR_ZERO, GR_COMBINE_LOCAL_CONSTANT, GR_COMBINE_OTHER_CONSTANT):
     {
     } break;
 
     default:
-        DebugBreak();
+        ASSERT(false);
     }
 }
 
@@ -340,29 +352,29 @@ FX_ENTRY void FX_CALL grAlphaBlendFunction
     GrAlphaBlendFnc_t alpha_df
 )
 {
-    state.constant_write_mask &= 0x00FFFFFF;
+    fxs.constant_write_mask &= 0x00FFFFFF;
 
     switch(PFX_BLEND_STATE(rgb_sf, rgb_df, alpha_sf, alpha_df))
     {
         case PFX_BLEND_STATE(GR_BLEND_ONE, GR_BLEND_ZERO, GR_BLEND_ZERO, GR_BLEND_ZERO):
         {
-            state.blend = GFX_BLEND_OPAQUE;
+            fxs.blend = GFX_BLEND_OPAQUE;
         } break;
 
         case PFX_BLEND_STATE(GR_BLEND_ONE, GR_BLEND_ONE, GR_BLEND_ZERO, GR_BLEND_ZERO):
         {
-            state.blend = GFX_BLEND_ADDITIVE;
+            fxs.blend = GFX_BLEND_ADDITIVE;
         } break;
 
         case PFX_BLEND_STATE(GR_BLEND_ZERO, GR_BLEND_SRC_COLOR, GR_BLEND_ZERO, GR_BLEND_ZERO):
         {
-            state.blend = GFX_BLEND_MODULATE;
+            fxs.blend = GFX_BLEND_MODULATE;
         } break;
 
         case PFX_BLEND_STATE(GR_BLEND_SRC_ALPHA, GR_BLEND_ONE_MINUS_SRC_ALPHA, GR_BLEND_ZERO, GR_BLEND_ZERO):
         {
-            state.blend = GFX_BLEND_ALPHA;
-            state.constant_write_mask = 0xFF000000;
+            fxs.blend = GFX_BLEND_ALPHA;
+            fxs.constant_write_mask = 0xFF000000;
             break;
         }
 
@@ -374,7 +386,7 @@ FX_ENTRY void FX_CALL grAlphaBlendFunction
 
 FX_ENTRY void FX_CALL grConstantColorValue(GrColor_t value)
 {
-    state.constant_color = (value >> 8) | (value << 24);
+    fxs.constant_color = (value >> 8) | (value << 24);
 }
 
 
@@ -392,23 +404,10 @@ FX_ENTRY void FX_CALL grChromakeyValue(GrColor_t value)
 //
 // Device access
 //
-FX_ENTRY void FX_CALL grTexDownloadMipMap
-(
-    GrChipID_t tmu,
-    FxU32 startAddress,
-    FxU32 evenOdd,
-    GrTexInfo* info
-)
-{
-    LOG("TMU download: 0x%X", startAddress);
-
-    tmu_insert(startAddress, info);
-}
-
-
 FX_ENTRY void FX_CALL grTexDownloadTable(GrTexTable_t type, void* data)
 {
     DxStateSetPalette(data);
+    memcpy(fxs.color_palette, data, sizeof(fxs.color_palette));
 }
 
 
@@ -462,7 +461,7 @@ FX_ENTRY FxU32 FX_CALL grTexMinAddress(GrChipID_t tmu)
 
 FX_ENTRY FxU32 FX_CALL grTexMaxAddress(GrChipID_t tmu)
 {
-    return TMU_MEM_SZ - (2 * TMU_ALIGNMENT);
+    return TMU_BANK_SZ - (2 * TMU_TEX_ALIGN);
 }
 
 FX_ENTRY FxU32 FX_CALL grGet
@@ -476,36 +475,27 @@ FX_ENTRY FxU32 FX_CALL grGet
 
     switch(pname)
     {
-    case GR_MAX_TEXTURE_SIZE:
-        *params = 256;
-        return 4;
-    case GR_MAX_TEXTURE_ASPECT_RATIO:
-        *params = 3;
-        return 4;
-    case GR_NUM_BOARDS:
-        *params = 1;
-        return 4;
-    case GR_NUM_FB:
-        *params = 1;
-        return 4;
-    case GR_NUM_TMU:
-        *params = 1;
-        return 4;
-    case GR_TEXTURE_ALIGN:
-        *params = TMU_ALIGNMENT;
-        return 4;
-    case GR_MEMORY_UMA:
-        *params = 0;
-        return 4;
-    case GR_GAMMA_TABLE_ENTRIES:
-        *params = 256;
-        return 4;
-    case GR_BITS_GAMMA:
-        *params = 8;
-        return 4;
-    default:
-        return 0;
+        case GR_NUM_BOARDS: *params = 1; 
+            return 4;
+        case GR_MEMORY_UMA: *params = 0; 
+            return 4;
+        case GR_NUM_FB: *params = 1; 
+            return 4;
+        case GR_NUM_TMU: *params = 1; 
+            return 4;
+        case GR_TEXTURE_ALIGN: *params = TMU_TEX_ALIGN;
+            return 4;
+        case GR_MAX_TEXTURE_SIZE: *params = 256;
+            return 4;
+        case GR_MAX_TEXTURE_ASPECT_RATIO: *params = 3;
+            return 4;
+        case GR_GAMMA_TABLE_ENTRIES: *params = 256;
+            return 4;
+        case GR_BITS_GAMMA: *params = 8;
+            return 4;
     }
+
+    ASSERT(false);
 }
 
 
@@ -518,101 +508,6 @@ extern "C" void FX_CALL grUnused12(int, int, int) {  }
 extern "C" void FX_CALL grUnused16(int, int, int, int) { }
 extern "C" void FX_CALL grUnused28(int, int, int, int, int, int, int) { }
 
-
-
-
-tmu_tex* tmu_lookup(u32 addr)
-{
-    for(int i = 0; i < ARRAYSIZE(tmu_vad_list); i++)
-    {
-        tmu_vad& vad = tmu_vad_list[i];
-
-        if(vad.used && vad.addr == addr)
-        {
-            if (!vad.tex)
-                break;
-
-            return &tmu_tex_list[vad.tex];
-        }
-    }
-
-    return NULL;
-}
-
-
-void tmu_free_tex(tmu_tex* tex)
-{
-    if(tex->in_frame_list)
-    {
-        tex->pending_delete = true;
-        return;
-    }
-
-    DxDestroyTexture(tex->pTexture, tex->pTextureSRV);
-
-    tex->next = tmu_tex_next_free;
-    tmu_tex_next_free = tex;
-}
-
-
-void tmu_clean_frame_list()
-{
-    for(tmu_tex* tex = tmu_tex_frame_list, *next; tex; tex = next)
-    {
-        next = tex->next;
-        tex->in_frame_list = false;
-
-        if(tex->pending_delete)
-            tmu_free_tex(tex);
-    }
-
-    tmu_tex_frame_list = NULL;
-}
-
-void tmu_insert(u32 addr, GrTexInfo* info)
-{
-    tmu_vad* new_vad = NULL;
-
-
-    for(int i = 0; i < ARRAYSIZE(tmu_vad_list); i++)
-    {
-        tmu_vad& vad = tmu_vad_list[i];
-        tmu_tex& tex = tmu_tex_list[vad.tex];
-
-        if (vad.used)
-        {
-            if (addr >= vad.addr && addr < vad.addr + tex.size)
-            {
-                LOG("TMU delete VAD: 0x%X (SRV: 0x%X)", &vad, tex.pTextureSRV);
-                tmu_free_tex(&tex);
-                vad.used = false;
-                new_vad = &vad;
-            }
-        }
-
-        else
-            new_vad = &vad;
-    }
-
-    if (!new_vad)
-        DebugBreak();
-
-    tmu_tex* new_tex = tmu_tex_next_free;
-    tmu_tex_next_free = new_tex->next;
-
-    new_vad->addr = addr;
-    new_vad->tex = new_tex - tmu_tex_list;
-    new_vad->used = true;
-
-    memzero(new_tex, sizeof(*new_tex));
-    new_tex->info = *info;
-    GetTexDim(&new_tex->info, (FxU32*) &new_tex->width, (FxU32*) &new_tex->height);
-    new_tex->size = new_tex->width * new_tex->height;
-
-    DxCreateTexture(new_tex->width, new_tex->height, new_tex->info.data, &new_tex->pTexture, &new_tex->pTextureSRV);
-
-    LOG("TMU new VAD: 0x%X (Texture SRV: 0x%X", new_vad, new_tex->pTextureSRV);
-}
 
 
 void GetTexDim(const GrTexInfo* info, FxU32* w, FxU32* h)

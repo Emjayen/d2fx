@@ -2,20 +2,29 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="d2fx.cpp" />
-    <ClCompile Include="dx.cpp" />
-    <ClCompile Include="glide.cpp" />
-    <ClCompile Include="gfx.cpp" />
-    <ClCompile Include="xxh\xxh_x86dispatch.c">
-      <Filter>xxh</Filter>
-    </ClCompile>
     <ClCompile Include="xxh\xxhash.c">
       <Filter>xxh</Filter>
     </ClCompile>
-    <ClCompile Include="tcache.cpp" />
+    <ClCompile Include="dbg.cpp" />
+    <ClCompile Include="dx.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="glide.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="tcache.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="helper.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="glide.def" />
     <None Include="common.hlsli" />
+    <None Include="glide.def">
+      <Filter>gfx</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="pce">
@@ -24,12 +33,12 @@
     <Filter Include="xxh">
       <UniqueIdentifier>{c8a122c8-7cf5-49fe-9787-56162e980885}</UniqueIdentifier>
     </Filter>
+    <Filter Include="gfx">
+      <UniqueIdentifier>{0dfecf4b-ca22-460a-931b-be13783d6626}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="dx.h" />
-    <ClInclude Include="testdata.h" />
     <ClInclude Include="d2fx.h" />
-    <ClInclude Include="gfx.h" />
     <ClInclude Include="xxh\xxh_x86dispatch.h">
       <Filter>xxh</Filter>
     </ClInclude>
@@ -39,14 +48,31 @@
     <ClInclude Include="xxh\xxhash.h">
       <Filter>xxh</Filter>
     </ClInclude>
-    <ClInclude Include="tcache.h" />
     <ClInclude Include="pce\pce.h">
       <Filter>pce</Filter>
     </ClInclude>
+    <ClInclude Include="dbg.h" />
+    <ClInclude Include="dx.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="tcache.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="testdata.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="helper.h" />
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="vs.hlsl" />
-    <FxCompile Include="ps.hlsl" />
+    <FxCompile Include="ps.hlsl">
+      <Filter>gfx</Filter>
+    </FxCompile>
+    <FxCompile Include="vs.hlsl">
+      <Filter>gfx</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="res.rc" />

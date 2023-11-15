@@ -67,6 +67,21 @@ static inline u32 _bsr(u32 mask)
 	return (u32) idx;
 }
 
+static inline u32 _bsf(u32 mask)
+{
+	unsigned long idx;
+	_BitScanForward(&idx, mask);
+	return (u32) idx;
+}
+
+// Saturated arithmetic
+static inline u8 sataddu8(u8 a, u8 b)
+{
+	u8 r = a + b;
+	return r | -(r < a);
+}
+
+
 // Memory
 #define memzero(dst, len) memset(dst, 0, len)
 
@@ -86,6 +101,10 @@ struct slink
 	slink* next;
 };
 
+template<typename T> struct dlist : dlink { };
+template<typename T> struct slist: slink { };
+
+
 #define list_is_empty(lst) (((slink*) lst)->next == ((slink*) lst))
 
 static inline void list_insert(dlink* dst, dlink* src)
@@ -96,6 +115,22 @@ static inline void list_insert(dlink* dst, dlink* src)
 	src->prev = dst;
 }
 
+
+static inline void list_insert_list(dlink* dst, dlink* src)
+{
+	dlink* left = src->next;
+	dlink* right = src->prev;
+
+	left->prev = dst;
+	right->next = dst->next;
+	dst->next->prev = right;
+	dst->next = left;
+
+	src->next = src;
+	src->prev = src;
+}
+
+
 static inline void list_remove(dlink* entry)
 {
 	entry->prev->next = entry->next;
@@ -104,16 +139,26 @@ static inline void list_remove(dlink* entry)
 	entry->prev = nullptr;
 }
 
-static inline void* __list_pop(dlink* lst)
+static inline void* __list_pop_head(dlink* lst)
 {
 	auto r = lst->next;
 	list_remove(r);
 	return r;
 }
 
+
+static inline void* __list_pop_tail(dlink* lst)
+{
+	auto r = lst->prev;
+	list_remove(r);
+	return r;
+}
+
+
 #define list_insert_head(dst, src) list_insert(dst, src)
 #define list_insert_tail(dst, src) list_insert((dst)->prev, src)
-#define list_pop(lst, type, link) container_of(__list_pop(lst), type, link)
+#define list_pop(lst, type, link) container_of(__list_pop_head(lst), type, link)
+#define list_pop_tail(lst, type, link) container_of(__list_pop_tail(lst), type, link)
 
 static inline void slist_insert(slink* dst, slink* src)
 {
@@ -130,6 +175,7 @@ static inline void* __slist_pop(slink* lst)
 {
 	auto r = lst->next;
 	lst->next = r->next;
+	r->next = nullptr;
 	return r;
 }
 
@@ -151,3 +197,8 @@ static inline void slist_init(slink* lst)
 }
 
 #define list_iterate(list, link, type) for(type* p = (type*) (list)->next, *__nxt = nullptr; p != (type*) (list) ? __nxt = (type*) ((slink*) p)->next, (p = container_of(p, type, link)) : false; p = __nxt)
+#define list_iterate_back(list, link, type) for(type* p = (type*) (list)->prev, *__nxt = nullptr; p != (type*) (list) ? __nxt = (type*) ((dlink*) p)->prev, (p = container_of(p, type, link)) : false; p = __nxt)
+
+
+// Assert
+#define ASSERT(exp) do { if(!(exp)) { __asm int 3 } } while(false)
