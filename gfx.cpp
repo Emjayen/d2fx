@@ -100,8 +100,6 @@ void batch_render()
 
 		DxSetBlend(blend_state);
 		DxDrawIndexed(cmdl[start_cmd].voff, batch_size * 3);
-
-		LOG("Batch size: %u", batch_size);
 	}
 
 }
@@ -125,7 +123,6 @@ void gfx_flush()
 	void* pIB;
 
 	
-	LOG("Flushing: %u vertices; %u commands", vb_len, cmdl_len);
 
 	DxStartVertices(pVB, pIB);
 

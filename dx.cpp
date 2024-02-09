@@ -42,6 +42,7 @@ ID3D11Texture2D* pDepthSurface;
 ID3D11DepthStencilView* pDepthSurfaceDsv;
 ID3D11Texture2D* pTexCacheTexture;
 ID3D11ShaderResourceView* pTexCacheTextureSrv;
+HANDLE hVBI;
 
 
 // Shader types.
@@ -108,6 +109,23 @@ static bool CreateShaders()
 }
 
 
+/*
+ * VBIWait
+ *
+ */
+static DWORD WINAPI VBIWait(HANDLE hEvent)
+{
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+
+    for(;;)
+    {
+        pTargetOutput->WaitForVBlank();
+        SetEvent(hEvent);
+    }
+}
+
+
+
 bool DxInitialize(void* hWindow)
 {
     HRESULT (WINAPI* pfCreateDXGIFactory)(REFIID riid, _COM_Outptr_ void** ppFactory);
@@ -125,6 +143,10 @@ bool DxInitialize(void* hWindow)
         return false;
 
     DXFAIL(pfCreateDXGIFactory(IID_PPV_ARGS(&pDxgiFactory)));
+
+    // Enumerate adapters/outputs and select.
+    DXFAIL(pDxgiFactory->EnumAdapters(0, &pTargetAdapter));
+    DXFAIL(pTargetAdapter->EnumOutputs(0, &pTargetOutput));
 
     // Create our D3D device.
     D3D_FEATURE_LEVEL RequestedFeatureLevels[] =
@@ -149,7 +171,7 @@ bool DxInitialize(void* hWindow)
     scd.BufferCount = 2;
     scd.OutputWindow = (HWND) hWindow;
     scd.Windowed = TRUE;
-    scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     scd.Flags = NULL;
 
     DXFAIL(pDxgiFactory->CreateSwapChain(pDevice, &scd, &pSwapChain));
@@ -370,44 +392,8 @@ bool DxInitialize(void* hWindow)
         DXFAIL(pDevice->CreateBlendState(&BlendDesc[i], &pBlend[i]));
     }
 
-
-    //
-    // -- Initialization Done --
-    //
-
-
-
-    //u8 width = 128;
-    //u8 height = 128;
-
-    //s16 x = 1;
-    //s16 y = 1;
-
-    //float xxx = 256.0f - 0.5f;
-
-    //u8 z = xxx;
-
-    //u8 tex_u = width;
-    //u8 tex_v = height;
-
-    //gfx_vert vertices[] =
-    //{
-    //    { x, y, 0, 0 },
-    //    { x+width, y, tex_u, 0 },
-    //    { x, y+height, 0, tex_v},
-    //    { x+width, y, tex_u, 0 },
-    //    { x+width, y+height, tex_u, tex_v },
-    //    { x, y+height, 0, tex_v }
-    //};
-
-
-    //void* pTestTex;
-    //void* pTestTexSrv;
-
-    //DxCreateTexture(128, 128, rawData_sprite, &pTestTex, &pTestTexSrv);
-
-    //DxStateSetPalette(rawData_pal);
-
+    if(!(hVBI = CreateEvent(NULL, FALSE, FALSE, NULL)) || !CreateThread(NULL, 0x1000, (LPTHREAD_START_ROUTINE) VBIWait, (LPVOID) hVBI, NULL, NULL))
+        return false;
 
     return true;
 }

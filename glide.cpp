@@ -121,6 +121,7 @@ FX_ENTRY GrContext_t FX_CALL grSstWinOpen
 }
 
 
+extern bool bShouldBeRendering;
 
 //
 // Command submission
@@ -142,6 +143,11 @@ FX_ENTRY void FX_CALL grDrawVertexArray
 {
     gfx_vert* dst = gfx_vb_write_begin();
     vert** src = (vert**) pointers;
+
+
+    if(bShouldBeRendering != true)
+        DebugBreak();
+
 
     for(u8 i = 0; i < Count; i++)
     {

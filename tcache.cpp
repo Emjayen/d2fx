@@ -384,7 +384,7 @@ void tex_make_resident(gfx_tex* tex)
 	// Assign new address.
 	tile_idx_to_xy(tex->tile_idx, tex->width, tex->height, tex->tilex, tex->tiley);
 
-	verify_unoccupied(tex, tex->tileid, tex->tilex, tex->tiley, tex->width, tex->height);
+	//verify_unoccupied(tex, tex->tileid, tex->tilex, tex->tiley, tex->width, tex->height);
 
 	tex->vid_resident = true;
 
